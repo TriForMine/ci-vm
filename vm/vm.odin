@@ -4,8 +4,9 @@ import "core:mem"
 import "core:fmt"
 import "core:os"
 
-STACK_CAP :: 256
-DEBUG :: true
+_DEBUG      :: false
+DEBUG       :: _DEBUG
+DEBUG_TRACE :: _DEBUG
 
 VM :: struct {
     chunk: ^Chunk,
@@ -49,64 +50,48 @@ read_constant :: #force_inline proc() -> Value {
     return vm.chunk.constants[read_byte()]
 }
 
-Stack :: struct  {
-    top: ^Value,
-    values: []Value
-}
-
-
-make_stack :: proc(N: int) -> ^Stack {
-    values := make([]Value, N)
-    stack := new(Stack)
-    stack.top = &values[0]
-    stack.values = values
-
-    return stack
-}
-
-delete_stack :: proc(stack: ^Stack) {
-    delete(stack.values)
-    free(stack)
-}
-
-push :: #force_inline proc(stack: ^Stack, value: Value) {
-    when DEBUG {
-        number_of_elements := mem.ptr_sub(stack.top, &stack.values[0])
-        if number_of_elements >= len(stack.values) {
-            fmt.println("Stack overflow!")
-            os.exit(1)
-        }
-    }
-
-    stack.top^ = value
-    stack.top = mem.ptr_offset(stack.top, 1)
-}
-
-pop :: #force_inline proc(stack: ^Stack) -> Value {
-    when DEBUG {
-        number_of_elements := mem.ptr_sub(stack.top, &stack.values[0])
-        if number_of_elements <= 0 {
-            fmt.println("Stack underflow!")
-            os.exit(1)
-        }
-    }
-
-    stack.top = mem.ptr_offset(stack.top, -1)
-    value := stack.top^
-
-    return value
+apply :: proc(op: proc(a: Value, b: Value) -> Value) {
+    b := pop(vm.stack)
+    a := pop(vm.stack)
+    push(vm.stack, op(a, b))
 }
 
 run :: proc() -> InterpretResult {
     for {
+        when DEBUG_TRACE {
+            // Print the content of the stack
+            fmt.println("--- Stack ---")
+            fmt.print("[")
+            for value, i in &vm.stack.values {
+                if &value == vm.stack.top {
+                    break
+                }
+                if i > 0 {
+                    fmt.print(", ")
+                }
+                fmt.print(value)
+            }
+            fmt.println("]")
+            fmt.println("--- /Stack ---")
+        }
         instruction := cast(OpCode) read_byte()
-        #partial switch instruction {
+        switch instruction {
             case .OP_CONSTANT:
                 value := read_constant()
+                push(vm.stack, value)
                 when DEBUG {
                     fmt.println("Value:", value)
                 }
+            case .OP_NEGATE:
+                value := pop(vm.stack)
+                push(vm.stack, -value)
+            case .OP_ADD: apply(proc(a: Value, b: Value) -> Value { return a + b })
+            case .OP_SUB: apply(proc(a: Value, b: Value) -> Value { return a - b })
+            case .OP_MUL: apply(proc(a: Value, b: Value) -> Value { return a * b })
+            case .OP_DIV: apply(proc(a: Value, b: Value) -> Value { return a / b })
             case .OP_RETURN:
+                value := pop(vm.stack)
+                fmt.println(value)
                 return .OK
         }
     }

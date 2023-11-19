@@ -3,11 +3,6 @@ package main
 import "core:fmt"
 import "core:strings"
 
-OpCode :: enum {
-    OP_CONSTANT,
-    OP_RETURN,
-}
-
 Chunk :: struct {
     code : [dynamic]u8,
     line_numbers: map[int]int,
